@@ -52,5 +52,22 @@
     "savedChoice": "couple_posed",
     "status": "passed",
     "visibleCorrection": "true"
+  },
+  "researchDistribution": {
+    "date": "2026-11-19",
+    "scope": "研究版分发验收；安装流程测试不作为照片分类评分",
+    "installerChecks": [
+      "损坏分包拒绝",
+      "保留已有目录",
+      "安装互斥锁",
+      "合并与SHA-256校验",
+      "解压与执行权限",
+      "安装后清理临时资源",
+      "重复启动复用安装",
+      "无效清单拒绝"
+    ],
+    "completePayloadStartupCheck": "通过",
+    "realPhotoInferenceWithNetworkDenied": "通过：独立安装目录中，对一张真实照片运行本地模型，输出合影、4人；未使用模拟模型",
+    "runtimeSHA256": "9c787329e71ab353af1c13f35824e1f3dd24f5ad9b7edef458c6e01f9e732e28"
   }
 }

@@ -1,0 +1,56 @@
+{
+  "date": "2026-11-19",
+  "machine": "Apple M2 Ultra / 64 GB",
+  "note": "摘录既有验收记录；移除本机路径，不将浏览压测当作分类准确率。",
+  "classification": {
+    "build": 152,
+    "source": "holdout152/report.json",
+    "total": 52,
+    "correct": 50,
+    "accuracy": 0.9615384615384616,
+    "newlyInferred": 52,
+    "seconds": 567.5422840118408,
+    "allOriginalsAndExportsVerified": true,
+    "scope": "固定开发留出集52张，含2张类别差异；非独立生产准确率"
+  },
+  "rawPreview": {
+    "build": 154,
+    "source": "final154/raw-speed/receipt.json",
+    "cachedDisplaySeconds": "0.0017930269241333008",
+    "checks": "整场真实RAW任务、默认只看入选、分原因完整计数、25张原生切换与界面心跳、快速连点不串图、缓存、空搜索和缺原片、用户任务文件内容未变",
+    "mainHeartbeatMaxSeconds": "0.07921397686004639",
+    "previewAverageSeconds": "0.04675888061523437",
+    "previewMaxSeconds": "0.09903597831726074",
+    "realRAWCount": "25",
+    "sections": "入选合影:25, 全部记录:554, 合影未入选:45, 处理失败:0, 尚未处理:0, 非合影／快速跳过:484",
+    "selectionHandlerMaxSeconds": "0.00589299201965332",
+    "status": "passed",
+    "totalTaskRecords": "554"
+  },
+  "browserStress": {
+    "build": 154,
+    "source": "final154/stress/receipt.json",
+    "averageViewportSeconds": "0.03074483076731364",
+    "checks": "真实原片不移动、不调用分类模型；网格跨首尾随机滚动、全部可见缩略图、大图预览、排序保留选中、搜索与空结果、导入照片条末尾浏览",
+    "gridJumps": "30",
+    "realAlbums": "23",
+    "realPhotos": "2607",
+    "slowestViewportSeconds": "0.13165700435638428",
+    "status": "passed"
+  },
+  "liveCorrection": {
+    "build": 157,
+    "source": "live-classification-fix-20261119/couple-exact/receipt.json",
+    "completedBefore": "4",
+    "entry": "已处理统计卡→照片→纠正本张→改分类并记住今后同类→自动续作",
+    "finalCompleted": "5",
+    "minimumShown": "4",
+    "mode": "organize",
+    "oldPhotoModelCalls": "0",
+    "rulesHashChanged": "true",
+    "samples": "6576",
+    "savedChoice": "couple_posed",
+    "status": "passed",
+    "visibleCorrection": "true"
+  }
+}

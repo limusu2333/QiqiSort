@@ -1,0 +1,14 @@
+{
+  "component": "mlx-metal",
+  "version": "0.29.1",
+  "coreCommit": "ee18e1cbf0ab7937578d716cc1b62b3fb1725e27",
+  "platform": "macOS 14+, arm64",
+  "source": "https://pypi.org/pypi/mlx-metal/0.29.1/json",
+  "archiveURL": "https://files.pythonhosted.org/packages/82/3a/45c9ea1b6741a5dc80ad0b57eeee09e544a0d89ca66c7ad6cc55887c00d8/mlx_metal-0.29.1-py3-none-macosx_14_0_arm64.whl",
+  "archiveSHA256": "824b939b721a964a455aeea4d0e956e4cc945f3333522c1e72a077ae774bca49",
+  "archiveMember": "mlx/lib/mlx.metallib",
+  "sha256": "6268384b64f137142a70cdd0d1f266cf675b101239d7a7021e4589c77b36f92d",
+  "size": 101260173,
+  "license": "../licenses/mlx-metal/LICENSE",
+  "note": "Only the precompiled Metal library is shipped. Python files and libmlx.dylib are not installed or used."
+}

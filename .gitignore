@@ -1,0 +1,21 @@
+# Build outputs and local user data
+.DS_Store
+._*
+/.build/
+/.swiftpm/
+/runtime/
+/data/
+/validation/
+/release-assets/
+*.sqlite
+*.sqlite-*
+*.db
+*.safetensors
+*.onnx
+*.mlmodel
+*.mlpackage/
+*.mlmodelc/
+.env
+.env.*
+__pycache__/
+*.pyc

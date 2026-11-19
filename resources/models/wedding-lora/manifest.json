@@ -1,0 +1,20 @@
+{
+  "baseManifestSHA256": "5bb105ecf8791e10b9c7fffd008cc3b86099d7ea35f487713081ad6c252a0522",
+  "configSHA256": "fbf641fe39588b30a573ac02cc6bfd3c1c235c7750a3cdbcff0f0bc9cda34518",
+  "observationRulesSHA256": "1cc0fc3a5556eda7b0e73a6d93a095fd678ab6b02a0f67cdcc814c44b694d755",
+  "pipelineVersion": 3,
+  "promptSHA256": "e5003f7638a645748e1fc699c334929987ddce56137b34e9cb50e94ed0be2216",
+  "receiptSHA256": "6176987a105e16e349ad995fc3b08344d0c1ee49f80f8bac65e6c1ff8c9a37ae",
+  "review": {
+    "method": "hierarchical-v3-activity-v13",
+    "promptSHA256": "b1c08d47b6a7264538ee6054d8bc5613a046b72115cbe6d6d3fa0d7505154b67",
+    "testSHA256": "6a0ccaeb6ce7ad7a04e982bba1df7b3baab5ce10d2d707bba517490738b55b28",
+    "validationSHA256": "179b3b8beecd9ba6bd0e195547d5e72ac1bf66409b011c53a978cfc7095a543c"
+  },
+  "sampleCount": 162,
+  "selectionSHA256": "8d8d53296529a7f1fdfcb7994b019abce8c4eccd705c480bde816eacd9749224",
+  "steps": 486,
+  "testSHA256": "82eb605eaa402006a6afb0b06c10db0bd1dbc429493875a04cd5d32e730ffb7a",
+  "version": 1,
+  "weightsSHA256": "de40a49fdf5913283c56285d7cece5eb1d2106aabc613834af6a2bf510e28b23"
+}

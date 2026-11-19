@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "tag": "research-2026-11-19",
+  "repository": "limusu2333/QiqiSort",
+  "rootFolder": "七七理片研究版",
+  "executable": "原项目/runtime/七七整理台",
+  "executableSHA256": "9c787329e71ab353af1c13f35824e1f3dd24f5ad9b7edef458c6e01f9e732e28",
+  "archiveSize": 2883060756,
+  "archiveSHA256": "2bac8ca0108b44853174b3754846b1ea0ba8ad5110cbbbb1072b642e1a6e95f2",
+  "unpackedSize": 3464260197,
+  "fileCount": 102,
+  "parts": [
+    {
+      "name": "QiqiSort-Research-data.zip.001",
+      "size": 1800000000,
+      "sha256": "a682b18549977ae38f05fb341885c8b056f9cd0bdae237c76867489c4da43fda"
+    },
+    {
+      "name": "QiqiSort-Research-data.zip.002",
+      "size": 1083060756,
+      "sha256": "ae9f32cffdc998a63f592de05c2a8caeb8b6e81cf3f62bdba89ad8a0cd159ed2"
+    }
+  ]
+}

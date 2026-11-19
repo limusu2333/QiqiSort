@@ -1,0 +1,9 @@
+{
+  "method": "visual-role-features-v3",
+  "inputDimension": 1054,
+  "seedSHA256": "de2b0760d97003ffc0bed59a8eb26c36738d379ad011602a3fc1f7ec340427d2",
+  "samples": 162,
+  "sourceSeedSHA256": "0a3898fc5d0d833e6287d0c10c07f51c33f1a2addfa81b85a9040035e5b480aa",
+  "featureSchema": 3,
+  "visualEncoder": "sface-opencv-aligned5-v2-mobileclip2-clothing-v3"
+}

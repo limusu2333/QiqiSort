@@ -1,0 +1,32 @@
+{
+  "encoder": "opencv-sface-2021dec-rgb112-v1",
+  "source": {
+    "repository": "https://github.com/opencv/opencv_zoo",
+    "commit": "48b10fa505aeb51fbd127fc60a5c660040e823b7",
+    "path": "models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+    "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+    "size": 38696353
+  },
+  "files": [
+    {
+      "path": "SFace.mlmodelc/analytics/coremldata.bin",
+      "size": 243,
+      "sha256": "ba5683d692a5ddd7f0e7029ab9b33d37e78694b189e121b65d460e856369af2c"
+    },
+    {
+      "path": "SFace.mlmodelc/coremldata.bin",
+      "size": 466,
+      "sha256": "93df91ae8efc8b98f42eb404bf5db627328c975bbe9ee0400e259b97e394dd2c"
+    },
+    {
+      "path": "SFace.mlmodelc/model.mil",
+      "size": 59846,
+      "sha256": "34a0f9029631f345e633aae29c1274b79e5ebdce4538f9d245076a7c04d27cab"
+    },
+    {
+      "path": "SFace.mlmodelc/weights/weight.bin",
+      "size": 19296256,
+      "sha256": "97b7c06ffa35068a66418e3d8df60ef511d480775cc2eb6f80cf219e56c6267a"
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "encoder": "mobileclip2-s2-72424e70-center256-v1",
+  "model": "MobileCLIP2.mlmodelc",
+  "source": {
+    "model": "apple/MobileCLIP2-S2",
+    "revision": "72424e7025436db18f15c3eff6ee8c7c15ad4481",
+    "codeRevision": "48faa0fea4b08d74188b3841771aca6ff2c92852",
+    "files": [
+      {
+        "file": ".build/visual-model2/mobileclip2_s2.pt",
+        "sha256": "37c2d839a856491f2fcc82c40dc28672dbd0907235b4cd4c38dfff6457f0c09f",
+        "size": 398071149
+      },
+      {
+        "file": ".build/visual-model2/config.json",
+        "sha256": "4bd3130ec0b2669de4c5c01165f2933e1da4b84de7bc33f7011d2ae63a2582af",
+        "size": 476
+      },
+      {
+        "file": ".build/visual-model2/README.md",
+        "sha256": "41e74ac02e21ef7020166f774366a07b7a84370057ac9bc17250953ef96583c4",
+        "size": 6767
+      },
+      {
+        "file": ".build/visual-model2/LICENSE",
+        "sha256": "30c59d255d2b4075ba11b81ce5aa0109c28d28138d66d52f7f5d8cbba814df8b",
+        "size": 5816
+      },
+      {
+        "file": ".build/visual-model2/source.tar.gz",
+        "sha256": "a1f7057e74bd07daf62942ca603e3207a9707996ccef6d159ccd06ac12a3051a",
+        "size": 3549671
+      }
+    ]
+  },
+  "parity": {
+    "model": "apple/MobileCLIP2-S2",
+    "revision": "72424e7025436db18f15c3eff6ee8c7c15ad4481",
+    "codeRevision": "48faa0fea4b08d74188b3841771aca6ff2c92852",
+    "files": [
+      {
+        "file": ".build/visual-model2/mobileclip2_s2.pt",
+        "sha256": "37c2d839a856491f2fcc82c40dc28672dbd0907235b4cd4c38dfff6457f0c09f",
+        "size": 398071149
+      },
+      {
+        "file": ".build/visual-model2/config.json",
+        "sha256": "4bd3130ec0b2669de4c5c01165f2933e1da4b84de7bc33f7011d2ae63a2582af",
+        "size": 476
+      },
+      {
+        "file": ".build/visual-model2/README.md",
+        "sha256": "41e74ac02e21ef7020166f774366a07b7a84370057ac9bc17250953ef96583c4",
+        "size": 6767
+      },
+      {
+        "file": ".build/visual-model2/LICENSE",
+        "sha256": "30c59d255d2b4075ba11b81ce5aa0109c28d28138d66d52f7f5d8cbba814df8b",
+        "size": 5816
+      },
+      {
+        "file": ".build/visual-model2/source.tar.gz",
+        "sha256": "a1f7057e74bd07daf62942ca603e3207a9707996ccef6d159ccd06ac12a3051a",
+        "size": 3549671
+      }
+    ],
+    "preprocessing": "Compose(\n    Resize(size=256, interpolation=bilinear, max_size=None, antialias=True)\n    CenterCrop(size=(256, 256))\n    ToTensor()\n)",
+    "parity": [
+      {
+        "photo": "0001.jpg",
+        "cosine": 0.9998942017555237,
+        "seconds": 0.06795804196735844,
+        "maxAbsoluteError": 0.0027944371104240417
+      },
+      {
+        "photo": "0002.jpg",
+        "cosine": 0.9999150633811951,
+        "seconds": 0.025762333010789007,
+        "maxAbsoluteError": 0.002592235803604126
+      },
+      {
+        "photo": "0003.jpg",
+        "cosine": 0.999854564666748,
+        "seconds": 0.025845333992037922,
+        "maxAbsoluteError": 0.0026781857013702393
+      },
+      {
+        "photo": "0004.jpg",
+        "cosine": 0.9999136924743652,
+        "seconds": 0.02577466599177569,
+        "maxAbsoluteError": 0.002786502242088318
+      },
+      {
+        "photo": "0005.jpg",
+        "cosine": 0.999762773513794,
+        "seconds": 0.02580508397659287,
+        "maxAbsoluteError": 0.003274977207183838
+      },
+      {
+        "photo": "0006.jpg",
+        "cosine": 0.9998851418495178,
+        "seconds": 0.025244541990105063,
+        "maxAbsoluteError": 0.0020465143024921417
+      },
+      {
+        "photo": "0007.jpg",
+        "cosine": 0.9999011754989624,
+        "seconds": 0.0260834579821676,
+        "maxAbsoluteError": 0.0023510754108428955
+      },
+      {
+        "photo": "0008.jpg",
+        "cosine": 0.9998838901519775,
+        "seconds": 0.024818542005959898,
+        "maxAbsoluteError": 0.0023908913135528564
+      }
+    ],
+    "minimumCosine": 0.999762773513794,
+    "seconds": 14.358910624985583
+  },
+  "files": [
+    {
+      "path": "MobileCLIP2.mlmodelc/analytics/coremldata.bin",
+      "size": 243,
+      "sha256": "ebbffe29048a80785291d3b1da13e8ab0f99350bf5cd449613c1d7139ae8c863"
+    },
+    {
+      "path": "MobileCLIP2.mlmodelc/coremldata.bin",
+      "size": 694,
+      "sha256": "523f4006b3d611f8f7d41403a2d4d47bf8cd24dfb7b123619f4c265ceef783a6"
+    },
+    {
+      "path": "MobileCLIP2.mlmodelc/model.mil",
+      "size": 393228,
+      "sha256": "063da98a9d95bded49789e9098a815f28ba2cefb394a410ba53429ca1595b66b"
+    },
+    {
+      "path": "MobileCLIP2.mlmodelc/weights/weight.bin",
+      "size": 71397632,
+      "sha256": "aeddb3adbdfe179261639817572e49d1d1c19213f84a3bd913a7736e075388a9"
+    }
+  ]
+}

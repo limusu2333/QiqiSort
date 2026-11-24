@@ -10,7 +10,7 @@ contents=app/'Contents';binary=contents/'MacOS/QiqiSortLauncher';assets=contents
 binary.parent.mkdir(parents=True,exist_ok=True);assets.mkdir(parents=True,exist_ok=True)
 subprocess.run(['xcrun','swiftc','-O','-swift-version','5','-target','arm64-apple-macos14.0',str(source/'ResearchLauncher.swift'),'-o',str(binary)],check=True)
 shutil.copy2(manifest,assets/'release-manifest.json');shutil.copy2(repo/'resources/branding/Qiqi.icns',assets/'Qiqi.icns')
-info={'CFBundleIdentifier':'com.qiqisort.research.launcher','CFBundleName':'七七理片研究版','CFBundleDisplayName':'七七理片研究版','CFBundleExecutable':'QiqiSortLauncher','CFBundleIconFile':'Qiqi.icns','CFBundlePackageType':'APPL','CFBundleVersion':'2026.11.19','CFBundleShortVersionString':'2026.11.19','LSMinimumSystemVersion':'14.0','NSHighResolutionCapable':True,'NSHumanReadableCopyright':'摄影师七七与李A联合构建，仅供学习研究与技术讨论。'}
+info={'CFBundleIdentifier':'com.qiqisort.research.launcher','CFBundleName':'七七理片研究版','CFBundleDisplayName':'七七理片研究版','CFBundleExecutable':'QiqiSortLauncher','CFBundleIconFile':'Qiqi.icns','CFBundlePackageType':'APPL','CFBundleVersion':'2026.11.24','CFBundleShortVersionString':'2026.11.24','LSMinimumSystemVersion':'14.0','NSHighResolutionCapable':True,'NSHumanReadableCopyright':'摄影师七七与李A联合构建，仅供学习研究与技术讨论。'}
 (contents/'Info.plist').write_bytes(plistlib.dumps(info))
 subprocess.run(['/usr/bin/codesign','--force','--sign','-',str(app)],check=True)
 subprocess.run(['/usr/bin/codesign','--verify','--deep','--strict',str(app)],check=True)

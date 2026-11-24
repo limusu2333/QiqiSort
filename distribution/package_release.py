@@ -49,6 +49,6 @@ with zipfile.ZipFile(stream,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=1
   files+=1
 stream.finish_piece()
 exe=build/'runtime-copy/七七整理台'
-manifest={'version':1,'tag':'research-2026-11-19','repository':'limusu2333/QiqiSort','rootFolder':ROOT,'executable':'原项目/runtime/七七整理台','executableSHA256':hashlib.sha256(exe.read_bytes()).hexdigest(),'archiveSize':stream.pos,'archiveSHA256':stream.full.hexdigest(),'unpackedSize':unpacked,'fileCount':files,'parts':stream.items}
+manifest={'version':1,'tag':'research-2026-11-24','repository':'limusu2333/QiqiSort','rootFolder':ROOT,'executable':'原项目/runtime/七七整理台','executableSHA256':hashlib.sha256(exe.read_bytes()).hexdigest(),'archiveSize':stream.pos,'archiveSHA256':stream.full.hexdigest(),'unpackedSize':unpacked,'fileCount':files,'parts':stream.items}
 (out/'release-manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(manifest,ensure_ascii=False,indent=2))

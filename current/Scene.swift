@@ -116,6 +116,11 @@ actor SceneJudge {
         groupFaceLocations.removeAll()
         GPU.resetPeakMemory()
     }
+    func seedGroupFaces(_ faces: [URL: [Participant]]) {
+        for (url, participants) in faces where groupFaceLocations[url] == nil {
+            groupFaceLocations[url] = participants
+        }
+    }
     func inferenceMetrics() -> Metrics {
         var snapshot = metrics
         snapshot.peakInferenceBytes = GPU.peakMemory
@@ -148,6 +153,37 @@ actor SceneJudge {
                                        resources: ProjectResources, cancellation: Cancellation,
                                        maxTokens: Int, specialized: Bool = false, allowedOutputs: [String]? = nil,
                                        validate: (T) throws -> Void) async throws -> T {
+        if CloudInferenceSettings.backend == .deepseek {
+            try CloudInferenceSettings.validateIfCloud()
+            let apiKey = CloudInferenceSettings.apiKey
+            let modelName = CloudInferenceSettings.model
+            let grammar = allowedOutputs ?? (specialized ? PhotoCategory.allCases.map { "{\"category\":\"\($0.rawValue)\"}" } : nil)
+            var previousError = ""
+            for attempt in 0..<2 {
+                try cancellation.check()
+                let started = Date()
+                metrics.calls += 1
+                defer { metrics.seconds += Date().timeIntervalSince(started) }
+                let retry = attempt > 0 ? "上个回答未通过检查：\(previousError)。请重新依据原图填写原任务要求的全部字段，只返回一个完整、合法的 JSON 对象。描述字段简短，每项最多40个汉字，不重复同一句话；数字和 true/false 不加引号，不要解释。" : nil
+                let callID = ModelAudit.shared?.request(prompt: prompt, retry: retry, images: images,
+                    adapter: false, maxTokens: maxTokens, outputs: grammar, kind: String(reflecting: type))
+                let text = try await DeepSeekVisionClient.complete(prompt: prompt, retry: retry, images: images,
+                    maxTokens: maxTokens, allowedOutputs: grammar, apiKey: apiKey, model: modelName, cancellation: cancellation)
+                if let callID { ModelAudit.shared?.record("model_output", ["callID": callID, "raw": text]) }
+                try cancellation.check()
+                do {
+                    let decoded = try ModelJSON.decode(type, from: text)
+                    try validate(decoded)
+                    if let callID { ModelAudit.shared?.record("model_validation", ["callID": callID, "accepted": true]) }
+                    return decoded
+                } catch {
+                    previousError = (error as? DecodingError).map { String(describing: $0) } ?? error.localizedDescription
+                    if let callID { ModelAudit.shared?.record("model_validation", ["callID": callID,
+                        "accepted": false, "error": previousError, "attempt": attempt + 1]) }
+                }
+            }
+            throw GatherError.message("线上模型输出解析失败：\(previousError)")
+        }
         let container = try await model(resources)
         if specialized && weddingAdapter == nil {
             switch adapterSource {
@@ -232,6 +268,43 @@ actor SceneJudge {
                             resources: ProjectResources, cancellation: Cancellation,
                             stopOnFailure: Bool = false) async throws -> [FaceAssessment] {
         let faceRule = try resources.rule("face")
+        if CloudInferenceSettings.backend == .deepseek {
+            try CloudInferenceSettings.validateIfCloud()
+            let apiKey = CloudInferenceSettings.apiKey
+            let modelName = CloudInferenceSettings.model
+            let prompts = participants.map { faceRule + "\nNamed participant ID: \($0.id)" }
+            let crops = try participants.map { try PhotoImage.crop(detail, box: $0.box, margin: 0.25) }
+            let began = Date()
+            let batchTexts = try await DeepSeekVisionClient.completeBatch(
+                requests: participants.indices.map { (prompt: prompts[$0], images: [overview, crops[$0]]) },
+                maxTokens: 192, apiKey: apiKey, model: modelName, concurrency: 8, cancellation: cancellation)
+            metrics.seconds += Date().timeIntervalSince(began)
+            metrics.calls += participants.count
+            if participants.count > 1 { metrics.faceBatches += 1; metrics.batchedFaces += participants.count }
+            var checks = [FaceAssessment]()
+            for index in participants.indices {
+                let person = participants[index]
+                var check: FaceAssessment?
+                if let raw = batchTexts[index], let decoded = try? ModelJSON.decode(FaceAssessment.self, from: raw),
+                   (try? decoded.validate(id: person.id)) != nil { check = decoded }
+                if check == nil {
+                    check = try await response(FaceAssessment.self, prompt: prompts[index], images: [overview, crops[index]],
+                        resources: resources, cancellation: cancellation, maxTokens: 192,
+                        validate: { try $0.validate(id: person.id) })
+                }
+                guard var assessment = check else { throw GatherError.message("缺少人脸检查结果") }
+                if !assessment.readable && !stopOnFailure {
+                    let wider = try PhotoImage.crop(detail, box: person.box, margin: 0.7)
+                    assessment = try await response(FaceAssessment.self,
+                        prompt: faceRule + "\nNamed participant ID: \(person.id). Wider crop: locate their face before checking.",
+                        images: [overview, wider], resources: resources, cancellation: cancellation, maxTokens: 192,
+                        validate: { try $0.validate(id: person.id) })
+                }
+                checks.append(assessment)
+                if stopOnFailure && !assessment.passes { return checks }
+            }
+            return checks
+        }
         let container = try await model(resources)
         var checks = [FaceAssessment]()
         let batchSize = ProcessInfo.processInfo.environment["GATHER_DISABLE_FACE_BATCH"] == "1" ? 1 : 2
@@ -317,7 +390,7 @@ actor SceneJudge {
                 if let rejected = try groupFaceRejection(pair.0) { screened[pair.0] = rejected }
                 else { candidates.append(pair) }
             }
-            let requests = candidates.map { (prompt: prompt, image: categoryImages[$0.0] ?? $0.1) }
+            let requests = candidates.map { (prompt: prompt, image: $0.1) }
             let batch = try await stageBatch(requests, specialized: true, resources: resources,
                 cancellation: cancellation, maxTokens: 48)
             if batch.1 > 1 { metrics.observationBatches += 1; metrics.batchedPhotos += batch.0.count }
@@ -362,42 +435,51 @@ actor SceneJudge {
         }
         let prompt = try resources.rule("observation")
         let prompts = images.map { pair in prompt + appearanceContext(pair.0, mode: mode) }
-        let container = try await model(resources)
         let started = Date()
         let auditIDs = images.enumerated().map { index, pair in ModelAudit.shared?.request(prompt: prompts[index], images: [pair.1],
             adapter: false, maxTokens: 320, outputs: nil, kind: "observation_batch") }
         let batch: ([String], Int, Int, Int)
-        do {
-            batch = try await container.perform { context in
-                guard let model = context.model as? Qwen3VL else { return ([], 0, 0, 0) }
-                var inputs = [LMInput]()
-                for (index, pair) in images.enumerated() {
-                    try cancellation.check()
-                    let item = try await context.processor.prepare(input: UserInput(chat: [.user(
-                        prompts[index], images: [.ciImage(CIImage(cgImage: pair.1))])]))
-                    if let id = auditIDs[index] { ModelAudit.shared?.prepared(item, callID: id,
-                        renderedPrompt: context.tokenizer.decode(tokens: item.text.tokens.asArray(Int.self))) }
-                    inputs.append(item)
+        if CloudInferenceSettings.backend == .deepseek {
+            try CloudInferenceSettings.validateIfCloud()
+            let outputs = try await DeepSeekVisionClient.completeBatch(
+                requests: images.indices.map { (prompt: prompts[$0], images: [images[$0].1]) },
+                maxTokens: 320, apiKey: CloudInferenceSettings.apiKey, model: CloudInferenceSettings.model,
+                concurrency: 8, cancellation: cancellation)
+            batch = (outputs.map { $0 ?? "" }, 0, 0, outputs.count)
+        } else {
+            let container = try await model(resources)
+            do {
+                batch = try await container.perform { context in
+                    guard let model = context.model as? Qwen3VL else { return ([], 0, 0, 0) }
+                    var inputs = [LMInput]()
+                    for (index, pair) in images.enumerated() {
+                        try cancellation.check()
+                        let item = try await context.processor.prepare(input: UserInput(chat: [.user(
+                            prompts[index], images: [.ciImage(CIImage(cgImage: pair.1))])]))
+                        if let id = auditIDs[index] { ModelAudit.shared?.prepared(item, callID: id,
+                            renderedPrompt: context.tokenizer.decode(tokens: item.text.tokens.asArray(Int.self))) }
+                        inputs.append(item)
+                    }
+                    var eos = Set(context.configuration.extraEOSTokens.compactMap { context.tokenizer.convertTokenToId($0) })
+                    if let token = context.tokenizer.eosTokenId { eos.insert(token) }
+                    if let token = context.tokenizer.unknownTokenId { eos.insert(token) }
+                    let hits = model.imageFeatureCacheHits, misses = model.imageFeatureCacheMisses
+                    let tokens = try model.generateGreedyBatch(inputs: inputs, maxTokens: 320, eosTokens: eos,
+                        cacheBudget: 768 * 1024 * 1024,
+                        shouldStop: { cancellation.isCancelled })
+                    for index in tokens.indices {
+                        if let id = auditIDs[index] { ModelAudit.shared?.record("model_output", ["callID": id,
+                            "raw": context.tokenizer.decode(tokens: tokens[index]), "outputTokenIDs": tokens[index],
+                            "hitTokenLimit": tokens[index].count >= 320]) }
+                    }
+                    return (tokens.map { context.tokenizer.decode(tokens: $0) }, model.imageFeatureCacheHits - hits,
+                            model.imageFeatureCacheMisses - misses, model.lastBatchDecodeWidth)
                 }
-                var eos = Set(context.configuration.extraEOSTokens.compactMap { context.tokenizer.convertTokenToId($0) })
-                if let token = context.tokenizer.eosTokenId { eos.insert(token) }
-                if let token = context.tokenizer.unknownTokenId { eos.insert(token) }
-                let hits = model.imageFeatureCacheHits, misses = model.imageFeatureCacheMisses
-                let tokens = try model.generateGreedyBatch(inputs: inputs, maxTokens: 320, eosTokens: eos,
-                    cacheBudget: 768 * 1024 * 1024,
-                    shouldStop: { cancellation.isCancelled })
-                for index in tokens.indices {
-                    if let id = auditIDs[index] { ModelAudit.shared?.record("model_output", ["callID": id,
-                        "raw": context.tokenizer.decode(tokens: tokens[index]), "outputTokenIDs": tokens[index],
-                        "hitTokenLimit": tokens[index].count >= 320]) }
-                }
-                return (tokens.map { context.tokenizer.decode(tokens: $0) }, model.imageFeatureCacheHits - hits,
-                        model.imageFeatureCacheMisses - misses, model.lastBatchDecodeWidth)
+            } catch is CancellationError { throw CancellationError() }
+            catch {
+                ModelAudit.shared?.record("batch_error", ["callIDs": auditIDs.compactMap { $0 }, "error": String(describing: error)])
+                return [:]
             }
-        } catch is CancellationError { throw CancellationError() }
-        catch {
-            ModelAudit.shared?.record("batch_error", ["callIDs": auditIDs.compactMap { $0 }, "error": String(describing: error)])
-            return [:]
         }
         metrics.seconds += Date().timeIntervalSince(started)
         metrics.calls += batch.0.count
@@ -426,6 +508,19 @@ actor SceneJudge {
                             resources: ProjectResources, cancellation: Cancellation,
                             maxTokens: Int) async throws -> ([String], Int) {
         guard !requests.isEmpty else { return ([], 0) }
+        let grammar = specialized ? PhotoCategory.allCases.map { "{\"category\":\"\($0.rawValue)\"}" } : nil
+        if CloudInferenceSettings.backend == .deepseek {
+            try CloudInferenceSettings.validateIfCloud()
+            let started = Date()
+            let outputs = try await DeepSeekVisionClient.completeBatch(
+                requests: requests.map { (prompt: $0.prompt, images: [$0.image]) },
+                maxTokens: maxTokens, allowedOutputs: grammar,
+                apiKey: CloudInferenceSettings.apiKey, model: CloudInferenceSettings.model,
+                concurrency: 8, cancellation: cancellation)
+            metrics.calls += requests.count
+            metrics.seconds += Date().timeIntervalSince(started)
+            return (outputs.map { $0 ?? "" }, outputs.count)
+        }
         let container = try await model(resources)
         if specialized && weddingAdapter == nil {
             switch adapterSource {
@@ -437,7 +532,6 @@ actor SceneJudge {
             }
         }
         let adapter = specialized ? weddingAdapter : nil, started = Date()
-        let grammar = specialized ? PhotoCategory.allCases.map { "{\"category\":\"\($0.rawValue)\"}" } : nil
         let auditIDs = requests.map { ModelAudit.shared?.request(prompt: $0.prompt, images: [$0.image],
             adapter: adapter != nil, maxTokens: maxTokens, outputs: grammar, kind: "stage_batch") }
         do {
@@ -524,13 +618,18 @@ actor SceneJudge {
             resources: resources, cancellation: cancellation, maxTokens: 320, validate: { try $0.canonicalStructure().validate() })
         return result.canonicalStructure()
     }
+    func screenGroupOverview(_ url: URL, resources: ProjectResources, cancellation: Cancellation,
+                             classificationContext: String = "") async throws -> GroupOverview {
+        try await baseGroupOverview(url, resources: resources, cancellation: cancellation,
+            classificationContext: classificationContext)
+    }
     private func baseGroupOverview(_ url: URL, resources: ProjectResources, cancellation: Cancellation,
                        classificationContext: String = "", observation cached: GroupOverview? = nil) async throws -> GroupOverview {
         if let cached { try cached.validate(); return cached }
         if let rejected = try groupFaceRejection(url) { return rejected }
         let label = try await response(WeddingLabel.self,
             prompt: resources.rule("category") + "\n" + GroupScreening.instructions + knowledgeContext(classificationContext, mode: .groups),
-            images: [PhotoImage.load(url, maxPixel: 672)], resources: resources, cancellation: cancellation,
+            images: [PhotoImage.load(url, maxPixel: 1008)], resources: resources, cancellation: cancellation,
             maxTokens: 48, specialized: true, validate: { _ in })
         let result = GroupScreening.observation(faces: groupFaceLocations[url]!.count, category: label.category)
         ModelAudit.shared?.record("groups_only_screen", ["image": url.path,
@@ -542,7 +641,10 @@ actor SceneJudge {
         let started = Date()
         let faces: [Participant]
         if let cached = groupFaceLocations[url] { faces = cached }
-        else {
+        else if let prepared = PhotoPreparation.current, prepared.url == url, let precomputed = prepared.groupFaces {
+            faces = precomputed
+            groupFaceLocations[url] = faces
+        } else {
             faces = try NativeFaceLocations.groupCandidates(url)
             groupFaceLocations[url] = faces
         }

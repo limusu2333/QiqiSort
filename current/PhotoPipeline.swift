@@ -94,6 +94,7 @@ actor PhotoPipeline {
                      burstSelection: Bool, store: LearningStore, photoNotes: [String:String]? = nil, preserveCompleted: Bool = false,
                      progress: @escaping @Sendable (PipelineProgress) -> Void) async throws {
         guard running else { throw GatherError.message("照片处理状态已变化，请重新开始") }
+        try CloudInferenceSettings.validateIfCloud()
         let started = Date()
         await SceneJudge.shared.beginTask()
         let initialMetrics = await SceneJudge.shared.inferenceMetrics()
@@ -143,6 +144,8 @@ actor PhotoPipeline {
         if mode == .groups { rulesData.append(Data((GroupScreening.instructions + GroupScreening.confirmationPrompt
             + WeddingClassification.portraitReviewPrompt).utf8)) }
         if try WeddingReviewPolicy.enabled(resources) { rulesData.append(Data(WeddingReviewPolicy.promptSHA256.utf8)) }
+        let engineSignature = CloudInferenceSettings.rulesSignature
+        if !engineSignature.isEmpty { rulesData.append(Data(engineSignature.utf8)) }
         let rulesHash = sha256(rulesData)
         let fm = FileManager.default
         let recordDir = destination.appendingPathComponent(".筛选记录"), cache = recordDir.appendingPathComponent("cache")
@@ -239,6 +242,64 @@ actor PhotoPipeline {
         let keys = paired.keys.sorted()
         let previousResults = Dictionary(uniqueKeysWithValues: retained.map { ($0.id, $0) })
         var processedThisRun = 0
+        var pass1Candidates = [(pair: [URL], id: String, hashes: [String: String], preview: URL, photoContext: String,
+                                 observation: GroupOverview, decoded: DecodedPhoto?, prepSeconds: Double, obsSeconds: Double, obsCalls: Int, attempts: [String])]()
+        let groupWindowSize = 24
+        func flushPass1Candidates() async throws {
+            guard mode == .groups && !pass1Candidates.isEmpty && !cancellation.isCancelled else { return }
+            let windowCandidates = pass1Candidates
+            pass1Candidates.removeAll()
+            let batchElapsed = max(0, Date().timeIntervalSince(started) - cancellation.pausedDuration)
+            progress(PipelineProgress(completed: results.count, total: paired.count, selected: selected,
+                failed: failed, file: "", category: "本批初筛完成（已完成 \(results.count)/\(paired.count)），开始精查 \(windowCandidates.count) 张疑似合影",
+                elapsedSeconds: batchElapsed, remainingSeconds: processedThisRun > 0 ? batchElapsed / Double(processedThisRun) * Double(max(0, keys.count - processedThisRun)) : nil))
+            for candidate in windowCandidates {
+                if cancellation.isCancelled { break }
+                do { try await cancellation.checkpoint() } catch is CancellationError { break }
+                let photoStarted = Date()
+                let before = await SceneJudge.shared.inferenceMetrics()
+                var finding: Finding?, attempts = candidate.attempts
+                let file = candidate.preview
+                if let digest = candidate.hashes[file.path] {
+                    let cached = cache.appendingPathComponent(sha256(Data((digest + rulesHash + candidate.photoContext).utf8)) + ".json")
+                    do {
+                        finding = try await PhotoPreparation.$current.withValue(candidate.decoded) {
+                            try await SceneJudge.shared.judge(file, resources: resources, cancellation: cancellation,
+                                mode: .groups, classificationContext: candidate.photoContext, observation: candidate.observation)
+                        }
+                        try JSONEncoder().encode(finding!).write(to: cached, options: .atomic)
+                    } catch is CancellationError { break }
+                    catch { attempts.append("\(file.lastPathComponent)：\(error.localizedDescription)") }
+                }
+                if cancellation.isCancelled { break }
+                let problem = finding == nil || candidate.hashes.count != candidate.pair.count ? attempts.joined(separator: "；") : nil
+                let result = ResultRecord(id: candidate.id, sources: candidate.pair.map(\.path), sourceHashes: candidate.hashes,
+                    preview: file.path, finding: finding, error: problem)
+                let after = await SceneJudge.shared.inferenceMetrics()
+                timings.append(PhotoTiming(file: file.lastPathComponent,
+                    seconds: Date().timeIntervalSince(photoStarted) + candidate.obsSeconds,
+                    modelCalls: after.calls - before.calls + candidate.obsCalls,
+                    preparationSeconds: candidate.prepSeconds))
+                if let index = results.firstIndex(where: { $0.id == candidate.id }) { results[index] = result }
+                else { results.append(result) }
+                selected = results.filter { record in
+                    if let saved = corrections[record.id],saved.sourceHashes == record.sourceHashes { return saved.photo.choice.selected && saved.photo.choice.category == .group }
+                    return record.error == nil && record.finding?.category == PhotoCategory.group.title && record.finding?.anomalies.isEmpty == true
+                }.count
+                failed = results.filter { $0.error != nil }.count
+                try save()
+                processedThisRun += 1
+                let totalElapsed = max(0, Date().timeIntervalSince(started) - cancellation.pausedDuration)
+                let displayCategory: String
+                if problem != nil { displayCategory = "处理失败" }
+                else if finding?.scene.groupCandidate == false { displayCategory = "跳过：" + (finding?.detail ?? "非合影") }
+                else if finding?.anomalies.isEmpty == false { displayCategory = "跳过：合影人脸或眼睛不合格" }
+                else { displayCategory = finding?.category ?? "处理失败" }
+                progress(PipelineProgress(completed: results.count, total: paired.count, selected: selected,
+                    failed: failed, file: file.lastPathComponent, category: displayCategory, error: problem,
+                    elapsedSeconds: totalElapsed, remainingSeconds: totalElapsed / Double(processedThisRun) * Double(max(0, keys.count - processedThisRun)), record: result))
+            }
+        }
         try await withThrowingTaskGroup(of: PreparedPhotoInput.self) { group in
             var next = 0, ready = [Int: PreparedPhotoInput]()
             var observations = [URL: GroupOverview]()
@@ -248,7 +309,7 @@ actor PhotoPipeline {
                 let old = previousResults[sha256(Data(key.utf8))]
                 group.addTask {
                     PreparedPhotoInput.prepare(index: index, key: key, files: pair, cache: cache,
-                        rulesHash: rulesHash, context: classificationContext + ImportNotes.context(pair, notes: notes), retained: old, cancellation: cancellation)
+                        rulesHash: rulesHash, context: classificationContext + ImportNotes.context(pair, notes: notes), retained: old, mode: mode, cancellation: cancellation)
                 }
             }
             while next < min(PhotoPreparation.workers, keys.count) { enqueue(next); next += 1 }
@@ -270,6 +331,11 @@ actor PhotoPipeline {
                         ready[prepared.index] = prepared
                     }
                     observations.removeAll(); observationCosts.removeAll()
+                    let precomputedFaces = Dictionary(uniqueKeysWithValues: (index...stageEnd).compactMap { position -> (URL, [Participant])? in
+                        guard let decoded = ready[position]?.decoded, let faces = decoded.groupFaces else { return nil }
+                        return (decoded.url, faces)
+                    })
+                    if !precomputedFaces.isEmpty { await SceneJudge.shared.seedGroupFaces(precomputedFaces) }
                     let targets = (index...stageEnd).compactMap { position -> (Int, URL, CGImage)? in
                         guard let decoded = ready[position]?.decoded, ImportNotes.context(ready[position]!.pair, notes: notes).isEmpty, let image = decoded.images[1008] else { return nil }
                         return (position, decoded.url, image)
@@ -305,6 +371,7 @@ actor PhotoPipeline {
                     finding = saved.finding; preview = URL(fileURLWithPath: saved.preview)
                     reusedRecord = true
                 }
+                var deferredCandidate = false
                 for file in pair {
                     if finding != nil { break }
                     guard let digest = hashes[file.path] else { continue }
@@ -313,8 +380,33 @@ actor PhotoPipeline {
                         if let data = try? Data(contentsOf: cached), let saved = try? JSONDecoder().decode(Finding.self, from: data),
                            !saved.requiresReassessment {
                             finding = saved
-                        }
-                        else {
+                        } else if mode == .groups {
+                            let overview: GroupOverview
+                            if let batchObs = observations[file] {
+                                overview = batchObs
+                            } else {
+                                overview = try await PhotoPreparation.$current.withValue(prepared.decoded) {
+                                    try await SceneJudge.shared.screenGroupOverview(file, resources: resources,
+                                        cancellation: cancellation, classificationContext: photoContext)
+                                }
+                            }
+                            if overview.groupCandidate {
+                                let afterObs = await SceneJudge.shared.inferenceMetrics()
+                                pass1Candidates.append((pair: pair, id: id, hashes: hashes, preview: file,
+                                    photoContext: photoContext, observation: overview,
+                                    decoded: prepared.decoded,
+                                    prepSeconds: prepared.seconds,
+                                    obsSeconds: Date().timeIntervalSince(photoStarted) + (observationCosts[index]?.seconds ?? 0),
+                                    obsCalls: afterObs.calls - before.calls + (observationCosts[index]?.calls ?? 0),
+                                    attempts: attempts))
+                                preview = file; deferredCandidate = true; break
+                            }
+                            finding = try await PhotoPreparation.$current.withValue(prepared.decoded) {
+                                try await SceneJudge.shared.judge(file, resources: resources, cancellation: cancellation,
+                                    mode: mode, classificationContext: photoContext, observation: overview)
+                            }
+                            try JSONEncoder().encode(finding!).write(to: cached, options: .atomic)
+                        } else {
                             finding = try await PhotoPreparation.$current.withValue(prepared.decoded) {
                                 try await SceneJudge.shared.judge(file, resources: resources, cancellation: cancellation,
                                     mode: mode, classificationContext: photoContext, observation: observations[file])
@@ -326,6 +418,16 @@ actor PhotoPipeline {
                     catch { attempts.append("\(file.lastPathComponent)：\(error.localizedDescription)") }
                 }
                 if cancellation.isCancelled { break }
+                if deferredCandidate {
+                    let elapsed = max(0, Date().timeIntervalSince(started) - cancellation.pausedDuration)
+                    progress(PipelineProgress(completed: results.count, total: paired.count, selected: selected,
+                        failed: failed, file: preview.lastPathComponent, category: "初筛为疑似合影，待本批精查", error: nil,
+                        elapsedSeconds: elapsed, remainingSeconds: processedThisRun > 0 ? elapsed / Double(processedThisRun) * Double(max(0, keys.count - processedThisRun)) : nil))
+                    if (index + 1) % groupWindowSize == 0 || index == keys.count - 1 {
+                        try await flushPass1Candidates()
+                    }
+                    continue
+                }
                 let problem = finding == nil || hashes.count != pair.count ? attempts.joined(separator: "；") : nil
                 let result = ResultRecord(id: id, sources: pair.map(\.path), sourceHashes: hashes,
                     preview: preview.path, finding: finding, error: problem)
@@ -352,6 +454,9 @@ actor PhotoPipeline {
                 progress(PipelineProgress(completed: results.count, total: paired.count, selected: selected,
                     failed: failed, file: preview.lastPathComponent, category: displayCategory, error: problem,
                     elapsedSeconds: elapsed, remainingSeconds: elapsed / Double(processedThisRun) * Double(keys.count - processedThisRun), record: result))
+                if mode == .groups && ((index + 1) % groupWindowSize == 0 || index == keys.count - 1) {
+                    try await flushPass1Candidates()
+                }
             }
         }
         let plan = try await CurationEngine.build(task: task, records: results, resources: resources, cancellation: cancellation, store: store)

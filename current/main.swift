@@ -83,6 +83,9 @@ class App: NSObject, NSApplicationDelegate {
     let correctionNotice = label("",11,.semibold,Memphis.blue)
     var selectedMode: TaskMode = .organize
     let burstControl = NSButton(checkboxWithTitle: "连拍优选", target: nil, action: nil)
+    let engineControl = NSSegmentedControl(labels: ["本地处理", "线上 DeepSeek"], trackingMode: .selectOne, target: nil, action: nil)
+    let apiKeyButton = MemphisButton(title: "设置 API Key", target: nil, action: nil)
+    let engineBadge = StatusBadge("本地处理", color: Memphis.mint)
     let originalCount = NSTextField(labelWithString: "—")
     let pendingCount = NSTextField(labelWithString: "—")
     let groupCount = NSTextField(labelWithString: "—")
@@ -272,6 +275,65 @@ class App: NSObject, NSApplicationDelegate {
         log.appendMessage(s)
         if followsLatest { log.scrollToEndOfDocument(nil) }
     }
+    func refreshEngineControls() {
+        let backend = CloudInferenceSettings.backend
+        engineControl.selectedSegment = backend == .deepseek ? 1 : 0
+        engineControl.isEnabled = !busy
+        let hasKey = !CloudInferenceSettings.apiKey.isEmpty
+        apiKeyButton.isHidden = backend != .deepseek
+        apiKeyButton.isEnabled = !busy
+        apiKeyButton.title = hasKey ? "API Key 已填" : "填写 API Key"
+        apiKeyButton.fill = hasKey ? Memphis.mint : Memphis.yellow
+        apiKeyButton.invalidateIntrinsicContentSize()
+        engineBadge.text.stringValue = backend == .deepseek ? "线上 DeepSeek" : "本地处理"
+        engineBadge.color = backend == .deepseek ? Memphis.yellow : Memphis.mint
+    }
+    @objc func changeEngine() {
+        guard !busy else { return }
+        let backend: InferenceBackend = engineControl.selectedSegment == 1 ? .deepseek : .local
+        CloudInferenceSettings.setBackend(backend)
+        refreshEngineControls()
+        if backend == .deepseek && CloudInferenceSettings.apiKey.isEmpty {
+            _ = promptAPIKey(reason: "已切换到线上 DeepSeek 模式，请输入你的 DeepSeek API Key（模型：deepseek-flash）。")
+        } else {
+            status.stringValue = backend == .deepseek ? "已切换为线上 DeepSeek 模式（deepseek-flash）。" : "已切换为本地处理模式。"
+        }
+    }
+    @objc func configureAPIKey() {
+        guard !busy else { return }
+        _ = promptAPIKey(reason: "请输入你的 DeepSeek API Key，仅保存在本机设置中，用于线上视觉推理。")
+    }
+    @discardableResult
+    func promptAPIKey(reason: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "设置 DeepSeek API Key"
+        alert.informativeText = reason
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 360, height: 24))
+        input.placeholderString = "sk-...（支持 Cmd+V 粘贴）"
+        input.stringValue = CloudInferenceSettings.apiKey
+        alert.accessoryView = input
+        alert.window.initialFirstResponder = input
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "取消")
+        if !CloudInferenceSettings.apiKey.isEmpty {
+            alert.addButton(withTitle: "清空 Key")
+        }
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let trimmed = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            CloudInferenceSettings.setAPIKey(trimmed)
+            refreshEngineControls()
+            if !trimmed.isEmpty { status.stringValue = "DeepSeek API Key 已保存。" }
+            return !trimmed.isEmpty
+        } else if response == .alertThirdButtonReturn {
+            CloudInferenceSettings.setAPIKey("")
+            refreshEngineControls()
+            status.stringValue = "已清空保存的 DeepSeek API Key。"
+            return false
+        }
+        refreshEngineControls()
+        return !CloudInferenceSettings.apiKey.isEmpty
+    }
     @objc func runGroups() { run(mode: .groups) }
     @objc func runOrganize() { run(mode: .organize) }
     func run(mode: TaskMode) {
@@ -279,6 +341,12 @@ class App: NSObject, NSApplicationDelegate {
         guard reviewer?.exporting != true else {
             status.stringValue = "当前结果正在保存或应用经验，请完成或停止后再开始新任务。"
             reviewer?.window?.makeKeyAndOrderFront(nil); return
+        }
+        if CloudInferenceSettings.backend == .deepseek && CloudInferenceSettings.apiKey.isEmpty {
+            guard promptAPIKey(reason: "当前为线上 DeepSeek 模式，请先填写你的 DeepSeek API Key 再开始处理。") else {
+                status.stringValue = "未填写 DeepSeek API Key，已取消本次处理。"
+                return
+            }
         }
         if inputs.isEmpty { selectInputs() }
         guard !inputs.isEmpty else { return }
@@ -354,6 +422,7 @@ class App: NSObject, NSApplicationDelegate {
         updateClock()
         let token = cancellation
         burstControl.isEnabled = false
+        refreshEngineControls()
         let importedNotes = photoNotes.filter { key, _ in selected.contains { key == $0.path || key.hasPrefix($0.path + "/") } }
         let notes = (previousNotesTask?.photoNotes ?? [:]).merging(importedNotes,uniquingKeysWith: { _,new in new }).merging(previousNotesTask.map { TaskPhotoNotes.overrides(dest,task:$0) } ?? [:],uniquingKeysWith: { _,new in new })
         runPhotoNotes = notes; displayedTaskNotes = notes
@@ -408,6 +477,7 @@ class App: NSObject, NSApplicationDelegate {
             self.resume.isEnabled = task != nil && (task?.completed != task?.total || task?.errors.isEmpty == false)
             self.review.isEnabled = task?.total != 0 && task != nil
             self.burstControl.isEnabled = true
+            self.refreshEngineControls()
             if self.finishInteractiveInterruption(root:dest,token:cancellation,error:message) { return }
             let hasErrors = task?.errors.isEmpty == false
             self.taskBadge.text.stringValue = message != nil ? "处理异常" : (cancellation.isCancelled ? "用户已停止" : (hasErrors ? "完成，有失败项" : "分类完成，待导出"))
@@ -687,12 +757,30 @@ if args.count == 4 && args[1] == "--live-classification-check" {
             parent: URL(fileURLWithPath: args[6]), store: store)
         print("隔离检查已导出：\(output.path)")
     })
-} else if (args.count == 4 || args.count == 5) && ["--rescan", "--organize"].contains(args[1]) {
+} else if args.count >= 4 && ["--rescan", "--organize"].contains(args[1]) {
     exit(runCommand {
-        if args.count == 5 && args[4] != "--select-bursts" { throw GatherError.message("未知整理参数") }
+        var selectBursts = false
+        var idx = 4
+        while idx < args.count {
+            let flag = args[idx]
+            if flag == "--select-bursts" {
+                selectBursts = true; idx += 1
+            } else if flag == "--engine" && idx + 1 < args.count {
+                guard let parsed = InferenceBackend(rawValue: args[idx + 1].lowercased()) else {
+                    throw GatherError.message("未知推理引擎：\(args[idx + 1])，可选 local 或 deepseek")
+                }
+                CloudInferenceSettings.cliBackendOverride = parsed
+                idx += 2
+            } else if flag == "--api-key" && idx + 1 < args.count {
+                CloudInferenceSettings.cliAPIKeyOverride = args[idx + 1]
+                idx += 2
+            } else {
+                throw GatherError.message("未知整理参数：\(flag)")
+            }
+        }
         try await PhotoPipeline.shared.run(inputs: [URL(fileURLWithPath: args[2])],
             destination: URL(fileURLWithPath: args[3]), mode: args[1] == "--organize" ? .organize : .groups,
-            cancellation: Cancellation(), burstSelection: args.contains("--select-bursts")) { item in
+            cancellation: Cancellation(), burstSelection: selectBursts) { item in
                 print("\(item.completed)/\(item.total) \(item.file) \(item.category)")
             }
         print("分类记录：\(args[3])")

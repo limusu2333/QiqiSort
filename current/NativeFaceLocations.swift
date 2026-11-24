@@ -3,8 +3,8 @@ import CoreGraphics
 import Vision
 
 enum NativeFaceLocations {
-    static func groupCandidates(_ url: URL) throws -> [Participant] {
-        let image = try PhotoImage.load(url, maxPixel: 1600)
+    static func groupCandidates(_ url: URL, image1600: CGImage? = nil) throws -> [Participant] {
+        let image = try image1600 ?? PhotoImage.load(url, maxPixel: 1600)
         let faces = try detected(in: image)
         let humanRequest = VNDetectHumanRectanglesRequest(); humanRequest.upperBodyOnly = false
         try VNImageRequestHandler(cgImage: image, options: [:]).perform([humanRequest])

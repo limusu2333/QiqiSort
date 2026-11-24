@@ -4,6 +4,7 @@ import ImageIO
 struct DecodedPhoto {
     let url: URL
     let images: [Int: CGImage]
+    var groupFaces: [Participant]? = nil
 }
 
 enum PhotoPreparation {
@@ -23,6 +24,21 @@ enum PhotoPreparation {
             return image
         }
     }
+
+    static func resized(_ image: CGImage, maxPixel: Int) -> CGImage? {
+        let longest = max(image.width, image.height)
+        guard longest > maxPixel, longest > 0 else { return image }
+        let scale = Double(maxPixel) / Double(longest)
+        let width = max(1, Int((Double(image.width) * scale).rounded()))
+        let height = max(1, Int((Double(image.height) * scale).rounded()))
+        let space = image.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(data: nil, width: width, height: height,
+            bitsPerComponent: 8, bytesPerRow: 0, space: space,
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return context.makeImage()
+    }
 }
 
 struct PreparedPhotoInput {
@@ -35,7 +51,8 @@ struct PreparedPhotoInput {
     let seconds: Double
 
     static func prepare(index: Int, key: String, files: [URL], cache: URL, rulesHash: String,
-                        context: String, retained: ResultRecord?, cancellation: Cancellation) -> PreparedPhotoInput {
+                        context: String, retained: ResultRecord?, mode: TaskMode = .organize,
+                        cancellation: Cancellation) -> PreparedPhotoInput {
         let started = Date()
         let pair = files.sorted {
             let a = ["jpg", "jpeg"].contains($0.pathExtension.lowercased())
@@ -58,9 +75,23 @@ struct PreparedPhotoInput {
                 let saved = cache.appendingPathComponent(sha256(Data((digest + rulesHash + context).utf8)) + ".json")
                 // Cache hits need no image decoding; corrupt cache files are handled by the consumer.
                 if let cached = try? CurationFiles.read(Finding.self, saved), !cached.requiresReassessment { break }
-                if let images = try? autoreleasepool(invoking: {
-                    try [672: PhotoPreparation.image(file, maxPixel: 672),
-                         1008: PhotoPreparation.image(file, maxPixel: 1008)]
+                if mode == .groups {
+                    if let prepared = try? autoreleasepool(invoking: { () -> DecodedPhoto in
+                        let screen = try PhotoPreparation.image(file, maxPixel: 1600)
+                        let faces = try NativeFaceLocations.groupCandidates(file, image1600: screen)
+                        guard faces.count >= 2 else {
+                            return DecodedPhoto(url: file, images: [:], groupFaces: faces)
+                        }
+                        let image1008 = try PhotoPreparation.resized(screen, maxPixel: 1008) ?? PhotoPreparation.image(file, maxPixel: 1008)
+                        let image672 = try PhotoPreparation.resized(image1008, maxPixel: 672) ?? PhotoPreparation.image(file, maxPixel: 672)
+                        return DecodedPhoto(url: file, images: [672: image672, 1008: image1008], groupFaces: faces)
+                    }) {
+                        decoded = prepared; break
+                    }
+                } else if let images = try? autoreleasepool(invoking: { () -> [Int: CGImage] in
+                    let image1008 = try PhotoPreparation.image(file, maxPixel: 1008)
+                    let image672 = try PhotoPreparation.resized(image1008, maxPixel: 672) ?? PhotoPreparation.image(file, maxPixel: 672)
+                    return [672: image672, 1008: image1008]
                 }) {
                     decoded = DecodedPhoto(url: file, images: images); break
                 }

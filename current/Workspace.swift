@@ -6,7 +6,14 @@ extension App {
         NSApp.appearance = NSAppearance(named: .aqua)
         let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu()
         appMenu.addItem(withTitle: "退出七七整理台", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        appItem.submenu = appMenu; menu.addItem(appItem); NSApp.mainMenu = menu
+        appItem.submenu = appMenu; menu.addItem(appItem)
+        let editItem = NSMenuItem(), editMenu = NSMenu(title: "编辑")
+        editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu; menu.addItem(editItem)
+        NSApp.mainMenu = menu
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 850),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = "七七整理台 · 婚礼底片整理"
@@ -53,7 +60,7 @@ extension App {
         brandPlate.widthAnchor.constraint(equalToConstant: 200).isActive = true
         brandPlate.heightAnchor.constraint(equalToConstant: 48).isActive = true
         let header = row([brandPlate, label("婚礼底片工作台", 14, .semibold), spacer(),
-                          StatusBadge("本地处理", color: Memphis.mint), taskBadge], spacing: 16)
+                          engineBadge, taskBadge], spacing: 16)
         let title = row([label("这一次，好好归档。", 28, .bold), spacer()], spacing: 24)
 
         let artwork = importPreview
@@ -85,9 +92,14 @@ extension App {
         importSurface.widthAnchor.constraint(equalTo: workspace.widthAnchor, constant: -304).isActive = true
 
         burstControl.font = .systemFont(ofSize: 12)
+        engineControl.target = self; engineControl.action = #selector(changeEngine)
+        engineControl.controlSize = .regular; engineControl.font = .systemFont(ofSize: 12)
+        apiKeyButton.target = self; apiKeyButton.action = #selector(configureAPIKey)
+        styleButton(apiKeyButton, symbol: "key.fill", compact: true)
+        refreshEngineControls()
         timeStatus.font = .monospacedDigitSystemFont(ofSize:11,weight:.medium)
         timeStatus.maximumNumberOfLines = 1; timeStatus.setContentCompressionResistancePriority(.required,for:.horizontal)
-        let options = row([burstControl, spacer(), timeStatus, openExisting, resume], spacing: 16)
+        let options = row([burstControl, engineControl, apiKeyButton, spacer(), timeStatus, openExisting, resume], spacing: 12)
         let runBand = NSView(); runBand.wantsLayer = true; runBand.layer?.backgroundColor = ink.cgColor
         status.font = .systemFont(ofSize: 12, weight: .medium); status.textColor = .white
         status.maximumNumberOfLines = 2; status.stringValue = "等待底片"
